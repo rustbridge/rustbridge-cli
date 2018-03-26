@@ -1,3 +1,5 @@
+#![feature(plugin, decl_macro, custom_derive)]
+
 #[macro_use]
 extern crate quicli;
 
@@ -88,6 +90,19 @@ fn salt(username: &str) -> Vec<u8> {
     })
 }
 
+fn save<'u>(e: &'u str, p: &'u str) {
+    use diesel::prelude::*;
+    use schema::users::dsl::*;
+
+    let connection = establish_connection();
+
+    let new_user = (email.eq(e), password.eq(p));
+
+    let _ = diesel::insert_into(users)
+        .values(&new_user)
+        .execute(&connection);
+}
+
 #[derive(Debug, StructOpt)]
 struct Cli {
     #[structopt(long = "user", short = "u", parse(from_str))]
@@ -109,5 +124,5 @@ main!(|args: Cli| {
         &mut to_store,
     );
 
-    println!("{}", data_encoding::HEXUPPER.encode(&to_store));
+    save(&args.user, &data_encoding::HEXUPPER.encode(&to_store));
 });

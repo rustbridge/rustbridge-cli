@@ -396,7 +396,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rustbridge_cli"
+name = "rustbridge-cli"
 version = "0.1.0"
 dependencies = [
  "data-encoding 2.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
