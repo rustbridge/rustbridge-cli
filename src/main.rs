@@ -17,6 +17,9 @@ use diesel::pg::PgConnection;
 use std::env;
 
 use ring::{digest, rand, pbkdf2};
+use rand::SystemRandom;
+use ring::rand::SecureRandom;
+
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
 pub type Credential = [u8; CREDENTIAL_LEN];
@@ -53,7 +56,27 @@ fn establish_connection() -> PgConnection {
     })
 }
 
-fn salt_component() -> String {
+fn gen_salt() -> String {
+    let mut v = [0u8; CREDENTIAL_LEN];
+    let _ = SystemRandom.fill(&mut v);
+    data_encoding::HEXUPPER.encode(&v[..])
+}
+
+fn gen_pw_hash(email: &str, password: &str) -> String {
+    let salt = salt(&email);
+    let mut hash_result: Credential = [0u8; CREDENTIAL_LEN];
+
+    pbkdf2::derive(
+        DIGEST_ALG,
+        100_000,
+        &salt,
+        password.as_bytes(),
+        &mut hash_result,
+    );
+    data_encoding::HEXUPPER.encode(&hash_result)
+}
+
+fn salt_component_from_db() -> String {
     use diesel::prelude::*;
     use schema::salts::dsl::*;
 
@@ -75,7 +98,7 @@ fn salt_component() -> String {
 
 fn salt(username: &str) -> Vec<u8> {
     let salt = || -> Result<Vec<u8>> {
-        let db_salt = salt_component();
+        let db_salt = salt_component_from_db();
         let mut res = Vec::with_capacity(username.as_bytes().len() + db_salt.as_bytes().len());
 
         res.extend(db_salt.as_bytes());
@@ -90,12 +113,23 @@ fn salt(username: &str) -> Vec<u8> {
     })
 }
 
-fn save<'u>(e: &'u str, p: &'u str) {
+fn add_salt_to_db<'s>(salt_string: &'s str) {
+    use diesel::prelude::*;
+    use schema::salts::dsl::*;
+
+    let connection = establish_connection();
+    let new_salt = salt.eq(salt_string);
+
+    let _ = diesel::insert_into(salts)
+        .values(&new_salt)
+        .execute(&connection);
+}
+
+fn add_organizer_to_db<'o>(e: &'o str, p: &'o str) {
     use diesel::prelude::*;
     use schema::users::dsl::*;
 
     let connection = establish_connection();
-
     let new_user = (email.eq(e), password.eq(p));
 
     let _ = diesel::insert_into(users)
@@ -104,25 +138,25 @@ fn save<'u>(e: &'u str, p: &'u str) {
 }
 
 #[derive(Debug, StructOpt)]
-struct Cli {
-    #[structopt(long = "user", short = "u", parse(from_str))]
-    user: String,
+enum Commands {
+    #[structopt(name = "add", about = "Add an organizer to the users table")]
+    Add {
+        #[structopt(long = "user", short = "u", parse(from_str))]
+        user: String,
 
-    #[structopt(long = "password", short = "p", parse(from_str))]
-    password: String,
+        #[structopt(long = "password", short = "p", parse(from_str))]
+        password: String,
+    },
+    #[structopt(name = "salt", about = "Generate a new database salt component")]
+    Salt,
 }
 
-main!(|args: Cli| {
-    let salt = salt(&args.user[..]);
-    let mut to_store: Credential = [0u8; CREDENTIAL_LEN];
-
-    pbkdf2::derive(
-        DIGEST_ALG,
-        100_000,
-        &salt,
-        args.password.as_bytes(),
-        &mut to_store,
-    );
-
-    save(&args.user, &data_encoding::HEXUPPER.encode(&to_store));
+main!(|args: Commands| {
+    match args {
+        Commands::Add {
+            ref user,
+            ref password,
+        } => add_organizer_to_db(user, &gen_pw_hash(user, password)),
+        Commands::Salt => add_salt_to_db(&gen_salt()),
+    };
 });
