@@ -16,9 +16,8 @@ use diesel::Connection;
 use diesel::pg::PgConnection;
 use std::env;
 
-use ring::{digest, rand, pbkdf2};
-use rand::SystemRandom;
-use ring::rand::SecureRandom;
+use ring::{digest, pbkdf2};
+use ring::rand::{SecureRandom, SystemRandom};
 
 static DIGEST_ALG: &'static digest::Algorithm = &digest::SHA256;
 const CREDENTIAL_LEN: usize = digest::SHA256_OUTPUT_LEN;
